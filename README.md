@@ -1,5 +1,7 @@
 # diffusers/stable-diffusion-xl-1.0-inpainting-0.1 Cog model
 
+[![Try a demo on Replicate](https://replicate.com/lucataco/sdxl-inpainting/badge)](https://replicate.com/lucataco/sdxl-inpainting)
+
 This is an implementation of the [diffusers/stable-diffusion-xl-1.0-inpainting-0.1](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1) as a Cog model. [Cog packages machine learning models as standard containers.](https://github.com/replicate/cog)
 
 First, download the pre-trained weights:
