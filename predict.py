@@ -7,13 +7,15 @@ import torch
 import subprocess
 from PIL import Image
 from typing import List
-from diffusers import (AutoPipelineForInpainting,
+from diffusers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler, 
     EulerDiscreteScheduler,
     HeunDiscreteScheduler, 
-    PNDMScheduler
+    PNDMScheduler,
+    FluxPriorReduxPipeline,
+    FluxFillPipeline
 )
 
 MODEL_NAME = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
@@ -43,12 +45,17 @@ class Predictor(BasePredictor):
         print("Downloading weights")
         if not os.path.exists(MODEL_CACHE):
             download_weights(MODELS_URL, MODEL_CACHE)
-        self.pipe = AutoPipelineForInpainting.from_pretrained(
-            MODEL_NAME,
-            torch_dtype=torch.float16,
-            variant="fp16",
-            cache_dir=MODEL_CACHE,
+        self.pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-Redux-dev",
+            revision="refs/pr/8",
+            torch_dtype=torch.bfloat16,
         ).to("cuda")
+        self.pipe = FluxFillPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-Fill-dev",
+            torch_dtype=torch.bfloat16,
+            revision="refs/pr/4",
+        ).to("cuda")
+
 
     def scale_down_image(self, image_path, max_size):
         image = Image.open(image_path)
@@ -79,6 +86,7 @@ class Predictor(BasePredictor):
         self,
         image: Path = Input(description="Input image"),
         mask: Path = Input(description="Mask image - make sure it's the same size as the input image"),
+        reference_image: Path = Input(description="Reference image - image to encode as input for Flux.1 Redux"),
         prompt: str = Input(
             description="Input prompt",
             default="modern bed with beige sheet and pillows",
@@ -120,6 +128,11 @@ class Predictor(BasePredictor):
         pil_mask = Image.open(mask)
         # Assume mask is same size as input image
         mask_image = pil_mask.resize((input_image.width, input_image.height))
+
+        # Flux Prior Redux
+        pipe_prior_output = self.pipe_prior_redux(reference_image)
+        prompt_embeds = pipe_prior_output["prompt_embeds"]
+        pooled_prompt_embeds = pipe_prior_output["pooled_prompt_embeds"]
 
         result = self.pipe(
             prompt=[prompt] * num_outputs if prompt is not None else None,

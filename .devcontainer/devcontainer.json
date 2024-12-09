@@ -1,0 +1,41 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/docker-existing-dockerfile
+{
+    "name": "Existing Dockerfile",
+    "build": {
+        "context": "..",
+        "dockerfile": "../Dockerfile"
+    },
+    "mounts": [
+        // Mount the local gcloud config folder to the container
+        "source=${localEnv:HOME}/.config/gcloud/,target=/root/.config/gcloud/,type=bind,consistency=cached"
+    ],
+    // Delete below runArgs if not using gpu
+    "runArgs": [
+        "--gpus",
+        "all"
+    ],
+    // Features to add to the dev container. More info: https://containers.dev/features.
+    "features": {
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+    "postCreateCommand": "/bin/sh .devcontainer/postCreateCommand.sh",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.black-formatter",
+                "ms-toolsai.jupyter",
+                "ms-toolsai.jupyter-keymap",
+                "ms-toolsai.jupyter-renderers",
+                "mutantdino.resourcemonitor",
+                "aaron-bond.better-comments",
+                "bungcip.better-toml",
+                "njpwerner.autodocstring",
+                "emeraldwalk.RunOnSave",
+                "esbenp.prettier-vscode"
+            ]
+        }
+    }
+}
