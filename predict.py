@@ -18,7 +18,8 @@ from diffusers import (
     FluxFillPipeline
 )
 
-MODEL_NAME = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
+MODEL_NAME_FILL = "black-forest-labs/FLUX.1-Fill-dev"
+MODEL_NAME_REDUX = "black-forest-labs/FLUX.1-Redux-dev"
 MODEL_CACHE = "checkpoints"
 MODELS_URL = "https://weights.replicate.delivery/default/diffusers/sdxl-inpainting-0.1.tar"
 
