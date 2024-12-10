@@ -25,6 +25,11 @@ RUN pip install --no-cache-dir --upgrade pip==23.3.1 && \
     pip install --no-cache-dir poetry==1.7.0 && \
     rm -rf /root/.cache/pip
 
+# install pget
+RUN curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.5.6/pget_linux_x86_64" \
+    && chmod +x /usr/local/bin/pget \
+    && ln -s /usr/local/bin/pget /usr/bin/pget
+
 # Install pip dependencies
 COPY pyproject.toml /app/
 RUN poetry install --no-root --no-interaction

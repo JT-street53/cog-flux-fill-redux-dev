@@ -4,14 +4,9 @@
 import os
 import sys
 import torch
-from diffusers import AutoPipelineForInpainting
-
-
-def download_safetensors(url: str, path: Path):
-    try:
-        subprocess.run(["pget", url, str(path)], check=True)
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to download safetensors file: {e}")
+from dotenv import load_dotenv
+from huggingface_hub import login
+from diffusers import FluxPriorReduxPipeline, FluxFillPipeline
 
 
 # append project directory to path so predict.py can be imported
@@ -22,15 +17,20 @@ from predict import MODEL_NAME_FILL, MODEL_NAME_REDUX, MODEL_CACHE
 if not os.path.exists(MODEL_CACHE):
     os.makedirs(MODEL_CACHE)
 
-self.pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-Redux-dev",
-    revision="refs/pr/8",
+# Login to Hugging Face
+load_dotenv()
+login(token=os.environ["HUGGINGFACE_TOKEN"])
+
+# Download Flux Prior Redux
+pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(
+    MODEL_NAME_REDUX,
     torch_dtype=torch.bfloat16,
-)
-self.pipe = FluxFillPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-Fill-dev",
-    torch_dtype=torch.bfloat16,
-    revision="refs/pr/4",
 )
 pipe_prior_redux.save_pretrained(MODEL_CACHE, safe_serialization=True)
+
+# Download Flux Fill
+pipe = FluxFillPipeline.from_pretrained(
+    MODEL_NAME_FILL,
+    torch_dtype=torch.bfloat16,
+)
 pipe.save_pretrained(MODEL_CACHE, safe_serialization=True)
