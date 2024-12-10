@@ -3,7 +3,6 @@ from cog import BasePredictor, Input, Path
 import os
 import math
 import torch
-import subprocess
 from PIL import Image, ImageFilter
 from typing import List
 from dotenv import load_dotenv
@@ -18,6 +17,8 @@ from diffusers import (
     FluxPriorReduxPipeline,
     FluxFillPipeline,
 )
+
+from script.download_weights import download_weights
 
 
 MODEL_NAME_FILL = "black-forest-labs/FLUX.1-Fill-dev"
@@ -36,18 +37,10 @@ SCHEDULERS = {
     "PNDM": PNDMScheduler,
 }
 
+
 def login_huggingface():
     load_dotenv()
     login(token=os.environ["HUGGINGFACE_TOKEN"])
-
-
-# https://github.com/replicate/cog-flux/blob/main/weights.py#L150-L154
-def download_safetensors(url: str, path: Path):
-    # Download the file
-    try:
-        subprocess.run(["pget", url, str(path)], check=True)
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Failed to download safetensors file: {e}")
 
 
 class Predictor(BasePredictor):
@@ -56,8 +49,7 @@ class Predictor(BasePredictor):
         print("Downloading weights")
         login_huggingface()
         if not os.path.exists(MODEL_CACHE):
-            download_safetensors(MODELS_URL_FILL, Path(MODEL_CACHE))
-            download_safetensors(MODELS_URL_REDUX, Path(MODEL_CACHE))
+            download_weights()
         print("Loading Flux Prior Redux")
         self.pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(
             "black-forest-labs/FLUX.1-Redux-dev",

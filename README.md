@@ -6,7 +6,7 @@ This is an implementation of the [diffusers/stable-diffusion-xl-1.0-inpainting-0
 
 First, download the pre-trained weights:
 
-    sudo cog run script/download-weights.py
+    sudo cog run script/download_weights.py
 
 Then, you can run predictions:
 
