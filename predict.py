@@ -3,17 +3,12 @@ from cog import BasePredictor, Input, Path
 import os
 import math
 import torch
+import subprocess
 from PIL import Image, ImageFilter
 from typing import List
 from dotenv import load_dotenv
 from huggingface_hub import login
 from diffusers import (
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    HeunDiscreteScheduler,
-    PNDMScheduler,
     FluxPriorReduxPipeline,
     FluxFillPipeline,
 )
@@ -27,15 +22,6 @@ MODEL_CACHE = "checkpoints"
 # https://github.com/replicate/cog-flux/blob/main/weights.py#L208-L224
 MODELS_URL_FILL = "https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev/resolve/main/flux1-fill-dev.safetensors"
 MODELS_URL_REDUX = "https://huggingface.co/black-forest-labs/FLUX.1-Redux-dev/resolve/main/flux1-redux-dev.safetensors"
-
-SCHEDULERS = {
-    "DDIM": DDIMScheduler,
-    "DPMSolverMultistep": DPMSolverMultistepScheduler,
-    "HeunDiscrete": HeunDiscreteScheduler,
-    "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler,
-    "K_EULER": EulerDiscreteScheduler,
-    "PNDM": PNDMScheduler,
-}
 
 
 def login_huggingface():
@@ -102,22 +88,11 @@ class Predictor(BasePredictor):
             description="Input prompt",
             default="cartoon of a black woman laughing, digital art",
         ),
-        scheduler: str = Input(
-            description="scheduler",
-            choices=list(SCHEDULERS.keys()),
-            default="K_EULER",
-        ),
         guidance_scale: float = Input(
             description="Guidance scale", ge=0, le=10, default=8.0
         ),
         steps: int = Input(
             description="Number of denoising steps", ge=1, le=80, default=20
-        ),
-        strength: float = Input(
-            description="1.0 corresponds to full destruction of information in image",
-            ge=0.01,
-            le=1.0,
-            default=0.7,
         ),
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
@@ -154,11 +129,6 @@ class Predictor(BasePredictor):
         print(f"Using seed: {seed}")
         generator = torch.Generator("cuda").manual_seed(seed)
 
-        # Configure Scheduler
-        self.pipe.scheduler = SCHEDULERS[scheduler].from_config(
-            self.pipe.scheduler.config
-        )
-
         # Configure Input Image
         input_image = self.scale_down_image(image, 1024)
 
@@ -168,8 +138,9 @@ class Predictor(BasePredictor):
         mask_image = mask_image.filter(ImageFilter.GaussianBlur(blur_radius))
 
         # Run Flux Prior Redux
+        pil_reference_image = Image.open(reference_image)
         pipe_prior_output = self.pipe_prior_redux(
-            image=reference_image,
+            image=pil_reference_image,
             prompt=[prompt] * num_outputs if prompt is not None else None,
             prompt_embeds_scale=prompt_embeds_scale,
             pooled_prompt_embeds_scale=pooled_prompt_embeds_scale,
@@ -185,7 +156,6 @@ class Predictor(BasePredictor):
             mask_image=mask_image,
             guidance_scale=guidance_scale,
             num_inference_steps=steps,
-            strength=strength,
             generator=generator,
             width=input_image.width,
             height=input_image.height,
