@@ -3,7 +3,6 @@ from cog import BasePredictor, Input, Path
 import os
 import math
 import torch
-import numpy as np
 from PIL import Image, ImageFilter
 from typing import List
 from dotenv import load_dotenv

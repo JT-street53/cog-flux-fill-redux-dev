@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+
+import os
+import torch
+from dotenv import load_dotenv
+from huggingface_hub import login
+from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
+from diffusers import FluxPriorReduxPipeline, FluxFillPipeline
+
+MODEL_NAME_FILL = "black-forest-labs/FLUX.1-Fill-dev"
+MODEL_NAME_REDUX = "black-forest-labs/FLUX.1-Redux-dev"
+MODEL_NAME_CLIP = "openai/clip-vit-large-patch14"
+MODEL_NAME_T5 = "google/t5-v1_1-xxl"
+MODEL_CACHE = "checkpoints"
+
+
+def download_weights():
+    """Download the model weights from Hugging Face and save them locally."""
+    # Make cache folders
+    if not os.path.exists(MODEL_CACHE):
+        os.makedirs(MODEL_CACHE)
+
+    # Login to Hugging Face
+    load_dotenv()
+    login(token=os.environ["HUGGINGFACE_TOKEN"])
+
+    # Download CLIP
+    clip_model = CLIPTextModel.from_pretrained(
+        MODEL_NAME_CLIP, cache_dir=MODEL_CACHE, torch_dtype=torch.bfloat16
+    )
+    clip_model.save_pretrained(MODEL_CACHE, safe_serialization=True)
+
+    # Download CLIP Tokenizer
+    clip_tokenizer = CLIPTokenizer.from_pretrained(
+        MODEL_NAME_CLIP, cache_dir=MODEL_CACHE
+    )
+    clip_tokenizer.save_pretrained(MODEL_CACHE, safe_serialization=True)
+
+    # Download T5
+    t5_model = T5EncoderModel.from_pretrained(
+        MODEL_NAME_T5, cache_dir=MODEL_CACHE, torch_dtype=torch.bfloat16
+    )
+    t5_model.save_pretrained(MODEL_CACHE, safe_serialization=True)
+
+    # Download T5 Tokenizer
+    t5_tokenizer = T5TokenizerFast.from_pretrained(MODEL_NAME_T5, cache_dir=MODEL_CACHE)
+    t5_tokenizer.save_pretrained(MODEL_CACHE, safe_serialization=True)
+
+    # Download Flux Prior Redux
+    pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(
+        MODEL_NAME_REDUX, torch_dtype=torch.bfloat16, cache_dir=MODEL_CACHE
+    )
+    pipe_prior_redux.save_pretrained(MODEL_CACHE, safe_serialization=True)
+
+    # Download Flux Fill
+    pipe = FluxFillPipeline.from_pretrained(
+        MODEL_NAME_FILL, torch_dtype=torch.bfloat16, cache_dir=MODEL_CACHE
+    )
+    pipe.save_pretrained(MODEL_CACHE, safe_serialization=True)
+
+
+if __name__ == "__main__":
+    download_weights()
