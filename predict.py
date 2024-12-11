@@ -3,11 +3,12 @@ from cog import BasePredictor, Input, Path
 import os
 import math
 import torch
-import subprocess
+import numpy as np
 from PIL import Image, ImageFilter
 from typing import List
 from dotenv import load_dotenv
 from huggingface_hub import login
+from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 from diffusers import (
     FluxPriorReduxPipeline,
     FluxFillPipeline,
@@ -18,10 +19,9 @@ from script.download_weights import download_weights
 
 MODEL_NAME_FILL = "black-forest-labs/FLUX.1-Fill-dev"
 MODEL_NAME_REDUX = "black-forest-labs/FLUX.1-Redux-dev"
+MODEL_NAME_CLIP = "openai/clip-vit-large-patch14"
+MODEL_NAME_T5 = "google/t5-v1_1-xxl"
 MODEL_CACHE = "checkpoints"
-# https://github.com/replicate/cog-flux/blob/main/weights.py#L208-L224
-MODELS_URL_FILL = "https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev/resolve/main/flux1-fill-dev.safetensors"
-MODELS_URL_REDUX = "https://huggingface.co/black-forest-labs/FLUX.1-Redux-dev/resolve/main/flux1-redux-dev.safetensors"
 
 
 def login_huggingface():
@@ -37,14 +37,30 @@ class Predictor(BasePredictor):
         if not os.path.exists(MODEL_CACHE):
             download_weights()
         print("Loading Flux Prior Redux")
+        self.clip_model = CLIPTextModel.from_pretrained(
+            MODEL_NAME_CLIP, cache_dir=MODEL_CACHE, torch_dtype=torch.bfloat16
+        ).to("cuda")
+        self.clip_tokenizer = CLIPTokenizer.from_pretrained(
+            MODEL_NAME_CLIP, cache_dir=MODEL_CACHE
+        )
+        self.t5_model = T5EncoderModel.from_pretrained(
+            MODEL_NAME_T5, cache_dir=MODEL_CACHE, torch_dtype=torch.bfloat16
+        ).to("cuda")
+        self.t5_tokenizer = T5TokenizerFast.from_pretrained(
+            MODEL_NAME_T5, cache_dir=MODEL_CACHE
+        )
         self.pipe_prior_redux = FluxPriorReduxPipeline.from_pretrained(
-            "black-forest-labs/FLUX.1-Redux-dev",
+            MODEL_NAME_REDUX,
+            text_encoder=self.clip_model,
+            text_encoder_2=self.t5_model,
+            tokenizer=self.clip_tokenizer,
+            tokenizer_2=self.t5_tokenizer,
             torch_dtype=torch.bfloat16,
             cache_dir=MODEL_CACHE,
         ).to("cuda")
         print("Loading Flux Fill")
         self.pipe = FluxFillPipeline.from_pretrained(
-            "black-forest-labs/FLUX.1-Fill-dev",
+            MODEL_NAME_FILL,
             torch_dtype=torch.bfloat16,
             cache_dir=MODEL_CACHE,
         ).to("cuda")
@@ -123,49 +139,66 @@ class Predictor(BasePredictor):
         ),
     ) -> List[Path]:
         """Run a single prediction on the model"""
-        # Configure Seed
-        if seed is None:
-            seed = int.from_bytes(os.urandom(2), "big")
-        print(f"Using seed: {seed}")
-        generator = torch.Generator("cuda").manual_seed(seed)
+        try:
+            # Configure Seed
+            if seed is None:
+                seed = int.from_bytes(os.urandom(2), "big")
+            print(f"Using seed: {seed}")
+            generator = torch.Generator("cuda").manual_seed(seed)
 
-        # Configure Input Image
-        input_image = self.scale_down_image(image, 1024)
+            # Configure Input Image
+            input_image = self.scale_down_image(image, 1024)
 
-        # Configure Mask Image
-        pil_mask = Image.open(mask)
-        mask_image = pil_mask.resize((input_image.width, input_image.height))
-        mask_image = mask_image.filter(ImageFilter.GaussianBlur(blur_radius))
+            # Configure Mask Image
+            pil_mask = Image.open(mask)
+            mask_image = pil_mask.resize((input_image.width, input_image.height))
+            mask_image = mask_image.filter(ImageFilter.GaussianBlur(blur_radius))
 
-        # Run Flux Prior Redux
-        pil_reference_image = Image.open(reference_image)
-        pipe_prior_output = self.pipe_prior_redux(
-            image=pil_reference_image,
-            prompt=[prompt] * num_outputs if prompt is not None else None,
-            prompt_embeds_scale=prompt_embeds_scale,
-            pooled_prompt_embeds_scale=pooled_prompt_embeds_scale,
-        )
-        prompt_embeds = pipe_prior_output["prompt_embeds"]
-        pooled_prompt_embeds = pipe_prior_output["pooled_prompt_embeds"]
+            # Run Flux Prior Redux
+            pil_reference_image = Image.open(reference_image)
+            pipe_prior_output = self.pipe_prior_redux(
+                image=pil_reference_image,
+                prompt=[prompt] * num_outputs if prompt is not None else None,
+                prompt_embeds_scale=prompt_embeds_scale,
+                pooled_prompt_embeds_scale=pooled_prompt_embeds_scale,
+            )
+            prompt_embeds = pipe_prior_output["prompt_embeds"]
+            pooled_prompt_embeds = pipe_prior_output["pooled_prompt_embeds"]
 
-        # Run Flux Fill
-        result = self.pipe(
-            prompt_embeds=prompt_embeds,
-            pooled_prompt_embeds=pooled_prompt_embeds,
-            image=input_image,
-            mask_image=mask_image,
-            guidance_scale=guidance_scale,
-            num_inference_steps=steps,
-            generator=generator,
-            width=input_image.width,
-            height=input_image.height,
-        )
+            # Run Flux Fill
+            result = self.pipe(
+                prompt_embeds=prompt_embeds,
+                pooled_prompt_embeds=pooled_prompt_embeds,
+                image=input_image,
+                mask_image=mask_image,
+                guidance_scale=guidance_scale,
+                num_inference_steps=steps,
+                generator=generator,
+                width=input_image.width,
+                height=input_image.height,
+            )
 
-        # Save Output Images
-        output_paths = []
-        for i, output in enumerate(result.images):
-            output_path = f"/tmp/out-{i}.png"
-            output.save(output_path)
-            output_paths.append(Path(output_path))
+            # Save Output Images
+            output_paths = []
+            for i, output in enumerate(result.images):
+                output_path = f"/tmp/out-{i}.png"
+                output.save(output_path)
+                output_paths.append(Path(output_path))
 
-        return output_paths
+            return output_paths
+
+        finally:
+            # Clean up temporary variables
+            if "generator" in locals():
+                del generator
+            if "result" in locals():
+                del result
+            if "pipe_prior_output" in locals():
+                del pipe_prior_output
+            if "prompt_embeds" in locals():
+                del prompt_embeds
+            if "pooled_prompt_embeds" in locals():
+                del pooled_prompt_embeds
+
+            # Clear CUDA cache
+            torch.cuda.empty_cache()
